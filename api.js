@@ -10,7 +10,7 @@ const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || "https://msv-i92p.onrender.
 
 // Whitelist simple de domaines autorisés (à adapter)
 const ALLOWED_DOMAINS = [
-  "example.com",
+  "oneupload.to",
   "autredomaine.com",
   // ajoute d'autres domaines autorisés ici
 ];
