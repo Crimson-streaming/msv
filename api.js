@@ -16,7 +16,7 @@ const allowedOrigins = [
 // Whitelist des domaines autorisés pour la récupération
 const ALLOWED_DOMAINS = [
   "oneupload.to",
-  "autredomaine.com",
+  "vidmoly.net",
   // ajoute d'autres domaines autorisés ici
 ];
 
