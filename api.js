@@ -17,6 +17,7 @@ const allowedOrigins = [
 const ALLOWED_DOMAINS = [
   "oneupload.to",
   "vidmoly.net",
+  "127.0.0.1:5500"
   // ajoute d'autres domaines autorisés ici
 ];
 
