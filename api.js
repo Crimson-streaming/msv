@@ -44,6 +44,7 @@ function isUrlAllowed(urlString) {
   }
 }
 
+// Route principale
 app.get("/", async (req, res) => {
   const targetUrl = req.query.url;
 
@@ -80,6 +81,12 @@ app.get("/", async (req, res) => {
   }
 });
 
+// Route de santé pour monitoring (UptimeRobot, Render, etc.)
+app.get("/health", (req, res) => {
+  res.status(200).send("OK");
+});
+
+// Démarrage du serveur
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`✅ Serveur en écoute sur le port ${PORT}`);
 });
