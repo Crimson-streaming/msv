@@ -4,13 +4,15 @@ const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Route dynamique pour servir chaque dossier episodeX
 app.use('/episode/:num', (req, res, next) => {
   const episodeNum = req.params.num;
   const folderPath = path.join(__dirname, `episode${episodeNum}`);
 
-  // Sert les fichiers statiques depuis le dossier correspondant
-  express.static(folderPath)(req, res, next);
+  // Ici on remplace l'URL par la partie restante après /episode/:num pour express.static
+  const filePath = req.path;
+
+  // On appelle express.static sur le bon dossier avec le chemin corrigé
+  express.static(folderPath)(Object.assign({}, req, { url: filePath }), res, next);
 });
 
 app.get('/', (req, res) => {
