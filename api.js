@@ -5,22 +5,22 @@ const cors = require("cors");
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Origines frontend autorisées pour accéder au backend
+// Origines frontend autorisées pour accéder à ce backend
 const allowedOrigins = [
   "https://bloom-lz8g.onrender.com",
   "https://msv-i92p.onrender.com",
-  "http://localhost:3000", // pour développement local
+  "http://localhost:3000" // pour développement local
 ];
 
-// Domaines vers lesquels le backend peut faire des requêtes
+// Domaines autorisés pour la récupération de fichiers (proxy)
 const ALLOWED_DOMAINS = [
-  "prx-1316-ant.vmwesa.online",
+  "vmwesa.online",       // ← permet tous les sous-domaines dynamiques (ex: prx-xxxx-yyyy.vmwesa.online)
   "oneupload.to",
   "vidmoly.net",
   "127.0.0.1"
 ];
 
-// Middleware CORS
+// Middleware CORS sécurisé
 app.use(cors({
   origin: function (origin, callback) {
     if (!origin || allowedOrigins.includes(origin)) {
@@ -30,7 +30,7 @@ app.use(cors({
   }
 }));
 
-// Fonction utilitaire : vérifie si une URL est autorisée
+// Fonction : vérifie si une URL appartient à un domaine autorisé
 function isUrlAllowed(urlString) {
   try {
     const url = new URL(urlString);
@@ -40,7 +40,7 @@ function isUrlAllowed(urlString) {
   }
 }
 
-// ➤ Route principale : retourne une URL m3u8 trouvée dans une page HTML
+// ➤ Route principale pour extraire une URL .m3u8 depuis une page d'hébergement
 app.get("/", async (req, res) => {
   const targetUrl = req.query.url;
 
@@ -64,7 +64,7 @@ app.get("/", async (req, res) => {
     const match = html.match(/file\s*:\s*"([^"]+\.m3u8[^"]*)"/);
 
     if (!match || !match[1]) {
-      return res.status(404).json({ error: "Aucune URL .m3u8 trouvée." });
+      return res.status(404).json({ error: "Aucune URL .m3u8 trouvée dans la page." });
     }
 
     const m3u8Url = match[1];
@@ -76,7 +76,7 @@ app.get("/", async (req, res) => {
   }
 });
 
-// ➤ Route proxy : sert les fichiers .m3u8 / .ts en contournant le CORS
+// ➤ Route proxy : contourne le CORS pour .m3u8 et .ts (lecture directe côté client)
 app.get("/proxy", async (req, res) => {
   const targetUrl = req.query.url;
 
@@ -93,28 +93,25 @@ app.get("/proxy", async (req, res) => {
       headers: {
         "User-Agent": "Mozilla/5.0"
       },
-      responseType: "stream", // important pour diffuser directement les .m3u8 ou .ts
+      responseType: "stream", // pour diffuser les flux directement
       timeout: 10000
     });
 
-    // Transmet le Content-Type original
     res.setHeader("Content-Type", response.headers["content-type"] || "application/octet-stream");
-
-    // Diffuse directement la réponse
-    response.data.pipe(res);
+    response.data.pipe(res); // renvoie la réponse directement au client
 
   } catch (error) {
-    console.error("Erreur proxy:", error.message);
+    console.error("Erreur proxy :", error.message);
     res.status(500).json({ error: "Erreur lors de la récupération du fichier." });
   }
 });
 
-// ➤ Route de santé (utile pour Render, UptimeRobot)
+// ➤ Route de santé (monitoring / uptime)
 app.get("/health", (req, res) => {
   res.status(200).send("OK");
 });
 
-// ➤ Démarrage du serveur
+// ➤ Lancement du serveur
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`✅ Serveur proxy démarré sur le port ${PORT}`);
 });
