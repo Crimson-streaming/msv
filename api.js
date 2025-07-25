@@ -5,14 +5,12 @@ const cors = require("cors");
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Frontends autorisés à faire des requêtes
 const allowedOrigins = [
   "https://bloom-lz8g.onrender.com",
   "http://localhost:3000",
   "http://127.0.0.1:3000"
 ];
 
-// Domaines autorisés pour la récupération (et proxy)
 const ALLOWED_DOMAINS = [
   "oneupload.to",
   "vmwesa.online",
@@ -30,7 +28,8 @@ app.use(cors({
   }
 }));
 
-// 🔐 Vérifie si l'URL cible fait partie des domaines autorisés
+app.options('*', cors()); // pour les requêtes prévol (OPTIONS)
+
 function isUrlAllowed(urlString) {
   try {
     const url = new URL(urlString);
@@ -40,7 +39,7 @@ function isUrlAllowed(urlString) {
   }
 }
 
-// 📥 Route GET /?url=... → récupère et extrait le lien m3u8 depuis une page HTML
+// Extraction d'un .m3u8 depuis une page HTML
 app.get("/", async (req, res) => {
   const targetUrl = req.query.url;
   if (!targetUrl) {
@@ -58,8 +57,6 @@ app.get("/", async (req, res) => {
     });
 
     const html = response.data;
-
-    // Extraction du lien m3u8 (ajuste selon les sites ciblés)
     const match = html.match(/file\s*:\s*"([^"]+\.m3u8[^"]*)"/) ||
                   html.match(/source\s+src=["']([^"']+\.m3u8[^"']*)["']/) ||
                   html.match(/['"](https:\/\/[^"']+\.m3u8[^"']*)['"]/);
@@ -68,8 +65,7 @@ app.get("/", async (req, res) => {
       return res.status(404).json({ error: "Aucune URL .m3u8 trouvée." });
     }
 
-    const m3u8Url = match[1];
-    res.json({ m3u8: m3u8Url });
+    res.json({ m3u8: match[1] });
 
   } catch (err) {
     console.error("Erreur de récupération :", err.message);
@@ -77,7 +73,7 @@ app.get("/", async (req, res) => {
   }
 });
 
-// 📡 Route GET /proxy?url=... → Proxy direct d’un .m3u8 ou segment .ts (pour contourner CORS)
+// Proxy pour les fichiers m3u8 et .ts
 app.get("/proxy", async (req, res) => {
   const targetUrl = req.query.url;
   if (!targetUrl) {
@@ -96,22 +92,21 @@ app.get("/proxy", async (req, res) => {
     });
 
     res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
     res.setHeader("Content-Type", response.headers["content-type"] || "application/octet-stream");
 
     response.data.pipe(res);
-
   } catch (err) {
     console.error("Erreur proxy:", err.message);
     res.status(500).json({ error: "Erreur lors de la récupération du fichier." });
   }
 });
 
-// 🧪 Route santé (pour Render ou UptimeRobot)
+// Route de test
 app.get("/health", (req, res) => {
   res.status(200).send("OK");
 });
 
-// 🚀 Démarrage
 app.listen(PORT, "0.0.0.0", () => {
-  console.log(`✅ Serveur proxy démarré sur le port ${PORT}`);
+  console.log(`✅ Serveur proxy lancé sur le port ${PORT}`);
 });
