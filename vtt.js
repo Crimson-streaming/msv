@@ -1,24 +1,33 @@
 const express = require('express');
 const path = require('path');
+const fs = require('fs');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.use('/episode/:num', (req, res, next) => {
-  const episodeNum = req.params.num;
-  const folderPath = path.join(__dirname, `episode${episodeNum}`);
+// Middleware dynamique pour servir tous les dossiers episodeX
+app.use((req, res, next) => {
+  const match = req.path.match(/^\/(episode\d+)\/(.+)$/);
+  if (match) {
+    const folder = match[1];        // ex: 'episode1'
+    const file = '/' + match[2];    // ex: '/episode1.vtt' ou '/thumb_001.jpg'
+    const folderPath = path.join(__dirname, folder);
 
-  // Ici on remplace l'URL par la partie restante après /episode/:num pour express.static
-  const filePath = req.path;
-
-  // On appelle express.static sur le bon dossier avec le chemin corrigé
-  express.static(folderPath)(Object.assign({}, req, { url: filePath }), res, next);
+    if (fs.existsSync(folderPath)) {
+      express.static(folderPath)(Object.assign({}, req, { url: file }), res, next);
+    } else {
+      res.status(404).send("Dossier de l'épisode introuvable");
+    }
+  } else {
+    next();
+  }
 });
 
+// Page de test racine
 app.get('/', (req, res) => {
-  res.send('Serveur pour miniatures et fichiers VTT');
+  res.send('Serveur de fichiers VTT et miniatures');
 });
 
 app.listen(PORT, () => {
-  console.log(`Serveur démarré sur le port ${PORT}`);
+  console.log(`✅ Serveur lancé sur le port ${PORT}`);
 });
