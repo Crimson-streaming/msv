@@ -1,10 +1,13 @@
-const express = require("express");
-const axios = require("axios");
-const cors = require("cors");
+const express = require('express');
+const axios = require('axios');
+const cors = require('cors');
+const path = require('path');
+const fs = require('fs');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// === CONFIG CORS ===
 const allowedOrigins = [
   "https://bloom-lz8g.onrender.com",
   "http://localhost:3000",
@@ -18,18 +21,19 @@ const ALLOWED_DOMAINS = [
   "127.0.0.1"
 ];
 
-// Middleware CORS
-app.use(cors({
-  origin: function (origin, callback) {
-    if (!origin || allowedOrigins.includes(origin)) {
-      return callback(null, true);
-    }
-    return callback(new Error(`CORS refusé pour l'origine : ${origin}`), false);
+// Middleware CORS appliqué uniquement aux routes API (on fait un middleware custom)
+function corsMiddleware(req, res, next) {
+  const origin = req.headers.origin;
+  if (!origin || allowedOrigins.includes(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin || "*");
+    res.setHeader("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
+    next();
+  } else {
+    res.status(403).json({ error: `CORS refusé pour l'origine : ${origin}` });
   }
-}));
+}
 
-app.options('*', cors()); // pour les requêtes prévol (OPTIONS)
-
+// === UTILITAIRE ===
 function isUrlAllowed(urlString) {
   try {
     const url = new URL(urlString);
@@ -39,13 +43,27 @@ function isUrlAllowed(urlString) {
   }
 }
 
+// === SERVIR LES DOSSIERS "episode*" EN STATIQUE ===
+const baseDir = __dirname;
+fs.readdirSync(baseDir).forEach(folder => {
+  const folderPath = path.join(baseDir, folder);
+  if (fs.statSync(folderPath).isDirectory() && folder.startsWith('episode')) {
+    console.log(`🧩 Serving folder: /${folder}`);
+    app.use(`/${folder}`, express.static(folderPath));
+  }
+});
+
+// === ROUTES API ===
+
+// OPTIONS preflight pour toutes les routes API
+app.options('*', cors());
+
 // Extraction d'un .m3u8 depuis une page HTML
-app.get("/", async (req, res) => {
+app.get("/", corsMiddleware, async (req, res) => {
   const targetUrl = req.query.url;
   if (!targetUrl) {
     return res.status(400).json({ error: "Paramètre ?url= manquant." });
   }
-
   if (!isUrlAllowed(targetUrl)) {
     return res.status(403).json({ error: "Domaine non autorisé." });
   }
@@ -66,7 +84,6 @@ app.get("/", async (req, res) => {
     }
 
     res.json({ m3u8: match[1] });
-
   } catch (err) {
     console.error("Erreur de récupération :", err.message);
     res.status(500).json({ error: "Erreur lors de la récupération de la page." });
@@ -74,12 +91,11 @@ app.get("/", async (req, res) => {
 });
 
 // Proxy pour les fichiers m3u8 et .ts
-app.get("/proxy", async (req, res) => {
+app.get("/proxy", corsMiddleware, async (req, res) => {
   const targetUrl = req.query.url;
   if (!targetUrl) {
     return res.status(400).json({ error: "Paramètre ?url= requis." });
   }
-
   if (!isUrlAllowed(targetUrl)) {
     return res.status(403).json({ error: "Domaine non autorisé pour proxy." });
   }
@@ -102,11 +118,17 @@ app.get("/proxy", async (req, res) => {
   }
 });
 
-// Route de test
+// Route de test API
 app.get("/health", (req, res) => {
   res.status(200).send("OK");
 });
 
+// Route racine simple (pour la page de test de miniatures, VTT, etc.)
+app.get("/status", (req, res) => {
+  res.send('✅ Serveur de miniatures et VTT en ligne');
+});
+
+// === LANCEMENT DU SERVEUR ===
 app.listen(PORT, "0.0.0.0", () => {
-  console.log(`✅ Serveur proxy lancé sur le port ${PORT}`);
+  console.log(`🚀 Serveur fusionné en écoute sur le port ${PORT}`);
 });
