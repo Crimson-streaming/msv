@@ -43,40 +43,36 @@ function isUrlAllowed(urlString) {
   }
 }
 
-// === SERVIR LES DOSSIERS "episodeX" EN STATIQUE ===
 function isValidEpisodeFolder(folder) {
-  return /^episode\d+$/.test(folder); // ex: episode1, episode2...
+  return /^[a-zA-Z0-9_-]+$/.test(folder) && /^episode\d+$/.test(folder);
 }
 
+// === SERVIR LES DOSSIERS "episode*" EN STATIQUE ===
 const baseDir = __dirname;
 console.log(`📁 Scan des dossiers dans ${baseDir}...`);
 
 fs.readdirSync(baseDir).forEach(folder => {
+  const codes = [...folder].map(c => c.charCodeAt(0));
+  console.log(`📦 Dossier brut: "${folder}" | UTF-8:`, codes);
+
   const folderPath = path.join(baseDir, folder);
-
-  try {
-    const stats = fs.statSync(folderPath);
-    if (!stats.isDirectory()) {
-      console.log(`⛔ Ignoré (pas un dossier): ${folder}`);
-      return;
-    }
-
-    if (!isValidEpisodeFolder(folder)) {
-      console.log(`⛔ Ignoré (nom non valide): ${folder}`);
-      return;
-    }
-
+  if (fs.statSync(folderPath).isDirectory() && isValidEpisodeFolder(folder)) {
     console.log(`🧩 Serving folder: /${folder}`);
-    app.use(`/${folder}`, express.static(folderPath));
-  } catch (err) {
-    console.warn(`⚠️ Erreur d'accès à ${folder}: ${err.message}`);
+    
+    // 🔧 TEMPORAIRE : désactivation des routes statiques pour éviter le crash
+    // app.use(`/${folder}`, express.static(folderPath));
+    
+  } else {
+    console.log(`⛔ Ignoré : ${folder}`);
   }
 });
 
 // === ROUTES API ===
-app.options('*', cors()); // OPTIONS preflight
 
-// Extraction .m3u8 depuis une page
+// OPTIONS preflight
+app.options('*', cors());
+
+// Extraction m3u8
 app.get("/", corsMiddleware, async (req, res) => {
   const targetUrl = req.query.url;
   if (!targetUrl) return res.status(400).json({ error: "Paramètre ?url= manquant." });
@@ -104,7 +100,7 @@ app.get("/", corsMiddleware, async (req, res) => {
   }
 });
 
-// Proxy pour fichiers m3u8/.ts
+// Proxy m3u8 / ts
 app.get("/proxy", corsMiddleware, async (req, res) => {
   const targetUrl = req.query.url;
   if (!targetUrl) return res.status(400).json({ error: "Paramètre ?url= requis." });
@@ -128,11 +124,12 @@ app.get("/proxy", corsMiddleware, async (req, res) => {
   }
 });
 
-// === TESTS / STATUS ===
+// Health check
 app.get("/health", (req, res) => {
   res.status(200).send("OK");
 });
 
+// Route test
 app.get("/status", (req, res) => {
   res.send('✅ Serveur de miniatures et VTT en ligne');
 });
