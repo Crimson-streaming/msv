@@ -7,7 +7,6 @@ const fs = require('fs');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// === CONFIG CORS ===
 const allowedOrigins = [
   "https://bloom-lz8g.onrender.com",
   "http://localhost:3000",
@@ -21,19 +20,6 @@ const ALLOWED_DOMAINS = [
   "127.0.0.1"
 ];
 
-// Middleware CORS appliqué uniquement aux routes API
-function corsMiddleware(req, res, next) {
-  const origin = req.headers.origin;
-  if (!origin || allowedOrigins.includes(origin)) {
-    res.setHeader("Access-Control-Allow-Origin", origin || "*");
-    res.setHeader("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
-    next();
-  } else {
-    res.status(403).json({ error: `CORS refusé pour l'origine : ${origin}` });
-  }
-}
-
-// === UTILITAIRE ===
 function isUrlAllowed(urlString) {
   try {
     const url = new URL(urlString);
@@ -44,36 +30,35 @@ function isUrlAllowed(urlString) {
 }
 
 function isValidEpisodeFolder(folder) {
-  return /^[a-zA-Z0-9_-]+$/.test(folder) && /^episode\d+$/.test(folder);
+  return /^episode\d+$/.test(folder);
 }
 
-// === SERVIR LES DOSSIERS "episode*" EN STATIQUE ===
+// Middleware CORS officiel pour simplifier la gestion
+app.use(cors({
+  origin: function (origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  }
+}));
+
 const baseDir = __dirname;
 console.log(`📁 Scan des dossiers dans ${baseDir}...`);
 
 fs.readdirSync(baseDir).forEach(folder => {
-  const codes = [...folder].map(c => c.charCodeAt(0));
-  console.log(`📦 Dossier brut: "${folder}" | UTF-8:`, codes);
-
   const folderPath = path.join(baseDir, folder);
   if (fs.statSync(folderPath).isDirectory() && isValidEpisodeFolder(folder)) {
     console.log(`🧩 Serving folder: /${folder}`);
-    
-    // 🔧 TEMPORAIRE : désactivation des routes statiques pour éviter le crash
-    // app.use(`/${folder}`, express.static(folderPath));
-    
+    app.use(`/${folder}`, express.static(folderPath));
   } else {
     console.log(`⛔ Ignoré : ${folder}`);
   }
 });
 
-// === ROUTES API ===
-
-// OPTIONS preflight
-app.options('*', cors());
-
-// Extraction m3u8
-app.get("/", corsMiddleware, async (req, res) => {
+// Routes API
+app.get("/", async (req, res) => {
   const targetUrl = req.query.url;
   if (!targetUrl) return res.status(400).json({ error: "Paramètre ?url= manquant." });
   if (!isUrlAllowed(targetUrl)) return res.status(403).json({ error: "Domaine non autorisé." });
@@ -100,8 +85,7 @@ app.get("/", corsMiddleware, async (req, res) => {
   }
 });
 
-// Proxy m3u8 / ts
-app.get("/proxy", corsMiddleware, async (req, res) => {
+app.get("/proxy", async (req, res) => {
   const targetUrl = req.query.url;
   if (!targetUrl) return res.status(400).json({ error: "Paramètre ?url= requis." });
   if (!isUrlAllowed(targetUrl)) return res.status(403).json({ error: "Domaine non autorisé pour proxy." });
@@ -124,17 +108,9 @@ app.get("/proxy", corsMiddleware, async (req, res) => {
   }
 });
 
-// Health check
-app.get("/health", (req, res) => {
-  res.status(200).send("OK");
-});
+app.get("/health", (req, res) => res.status(200).send("OK"));
+app.get("/status", (req, res) => res.send('✅ Serveur de miniatures et VTT en ligne'));
 
-// Route test
-app.get("/status", (req, res) => {
-  res.send('✅ Serveur de miniatures et VTT en ligne');
-});
-
-// === LANCEMENT DU SERVEUR ===
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 Serveur fusionné en écoute sur le port ${PORT}`);
 });
