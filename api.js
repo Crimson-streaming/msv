@@ -43,9 +43,12 @@ function isUrlAllowed(urlString) {
   }
 }
 
-// === SERVIR LES DOSSIERS "episode*" EN STATIQUE, AVEC VALIDATION ===
-const baseDir = __dirname;
+// === SERVIR LES DOSSIERS "episodeX" EN STATIQUE ===
+function isValidEpisodeFolder(folder) {
+  return /^episode\d+$/.test(folder); // ex: episode1, episode2...
+}
 
+const baseDir = __dirname;
 console.log(`📁 Scan des dossiers dans ${baseDir}...`);
 
 fs.readdirSync(baseDir).forEach(folder => {
@@ -53,36 +56,31 @@ fs.readdirSync(baseDir).forEach(folder => {
 
   try {
     const stats = fs.statSync(folderPath);
-    const isValid =
-      stats.isDirectory() &&
-      folder.startsWith("episode") &&
-      /^[a-zA-Z0-9_-]+$/.test(folder); // pas de caractère spécial ou d’URL
+    if (!stats.isDirectory()) {
+      console.log(`⛔ Ignoré (pas un dossier): ${folder}`);
+      return;
+    }
 
-    if (!isValid) {
-      console.log(`⛔ Ignoré : ${folder}`);
+    if (!isValidEpisodeFolder(folder)) {
+      console.log(`⛔ Ignoré (nom non valide): ${folder}`);
       return;
     }
 
     console.log(`🧩 Serving folder: /${folder}`);
     app.use(`/${folder}`, express.static(folderPath));
   } catch (err) {
-    console.warn(`⚠️ Erreur lecture ${folder}: ${err.message}`);
+    console.warn(`⚠️ Erreur d'accès à ${folder}: ${err.message}`);
   }
 });
 
 // === ROUTES API ===
+app.options('*', cors()); // OPTIONS preflight
 
-app.options('*', cors());
-
-// Extraction d'un .m3u8 depuis une page HTML
+// Extraction .m3u8 depuis une page
 app.get("/", corsMiddleware, async (req, res) => {
   const targetUrl = req.query.url;
-  if (!targetUrl) {
-    return res.status(400).json({ error: "Paramètre ?url= manquant." });
-  }
-  if (!isUrlAllowed(targetUrl)) {
-    return res.status(403).json({ error: "Domaine non autorisé." });
-  }
+  if (!targetUrl) return res.status(400).json({ error: "Paramètre ?url= manquant." });
+  if (!isUrlAllowed(targetUrl)) return res.status(403).json({ error: "Domaine non autorisé." });
 
   try {
     const response = await axios.get(targetUrl, {
@@ -106,15 +104,11 @@ app.get("/", corsMiddleware, async (req, res) => {
   }
 });
 
-// Proxy pour les fichiers m3u8 et .ts
+// Proxy pour fichiers m3u8/.ts
 app.get("/proxy", corsMiddleware, async (req, res) => {
   const targetUrl = req.query.url;
-  if (!targetUrl) {
-    return res.status(400).json({ error: "Paramètre ?url= requis." });
-  }
-  if (!isUrlAllowed(targetUrl)) {
-    return res.status(403).json({ error: "Domaine non autorisé pour proxy." });
-  }
+  if (!targetUrl) return res.status(400).json({ error: "Paramètre ?url= requis." });
+  if (!isUrlAllowed(targetUrl)) return res.status(403).json({ error: "Domaine non autorisé pour proxy." });
 
   try {
     const response = await axios.get(targetUrl, {
@@ -134,13 +128,13 @@ app.get("/proxy", corsMiddleware, async (req, res) => {
   }
 });
 
-// === ROUTES DE TEST ===
+// === TESTS / STATUS ===
 app.get("/health", (req, res) => {
   res.status(200).send("OK");
 });
 
 app.get("/status", (req, res) => {
-  res.send("✅ Serveur de miniatures et VTT en ligne");
+  res.send('✅ Serveur de miniatures et VTT en ligne');
 });
 
 // === LANCEMENT DU SERVEUR ===
