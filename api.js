@@ -21,7 +21,7 @@ const ALLOWED_DOMAINS = [
   "127.0.0.1"
 ];
 
-// Middleware CORS appliqué uniquement aux routes API (on fait un middleware custom)
+// Middleware CORS appliqué uniquement aux routes API
 function corsMiddleware(req, res, next) {
   const origin = req.headers.origin;
   if (!origin || allowedOrigins.includes(origin)) {
@@ -43,19 +43,35 @@ function isUrlAllowed(urlString) {
   }
 }
 
-// === SERVIR LES DOSSIERS "episode*" EN STATIQUE ===
+// === SERVIR LES DOSSIERS "episode*" EN STATIQUE, AVEC VALIDATION ===
 const baseDir = __dirname;
+
+console.log(`📁 Scan des dossiers dans ${baseDir}...`);
+
 fs.readdirSync(baseDir).forEach(folder => {
   const folderPath = path.join(baseDir, folder);
-  if (fs.statSync(folderPath).isDirectory() && folder.startsWith('episode')) {
+
+  try {
+    const stats = fs.statSync(folderPath);
+    const isValid =
+      stats.isDirectory() &&
+      folder.startsWith("episode") &&
+      /^[a-zA-Z0-9_-]+$/.test(folder); // pas de caractère spécial ou d’URL
+
+    if (!isValid) {
+      console.log(`⛔ Ignoré : ${folder}`);
+      return;
+    }
+
     console.log(`🧩 Serving folder: /${folder}`);
     app.use(`/${folder}`, express.static(folderPath));
+  } catch (err) {
+    console.warn(`⚠️ Erreur lecture ${folder}: ${err.message}`);
   }
 });
 
 // === ROUTES API ===
 
-// OPTIONS preflight pour toutes les routes API
 app.options('*', cors());
 
 // Extraction d'un .m3u8 depuis une page HTML
@@ -118,14 +134,13 @@ app.get("/proxy", corsMiddleware, async (req, res) => {
   }
 });
 
-// Route de test API
+// === ROUTES DE TEST ===
 app.get("/health", (req, res) => {
   res.status(200).send("OK");
 });
 
-// Route racine simple (pour la page de test de miniatures, VTT, etc.)
 app.get("/status", (req, res) => {
-  res.send('✅ Serveur de miniatures et VTT en ligne');
+  res.send("✅ Serveur de miniatures et VTT en ligne");
 });
 
 // === LANCEMENT DU SERVEUR ===
