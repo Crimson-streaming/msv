@@ -9,8 +9,8 @@ const PORT = process.env.PORT || 3000;
 
 const allowedOrigins = [
   "https://bloom-lz8g.onrender.com",
-  "http://localhost:3000",
-  "http://127.0.0.1:3000"
+  "http://localhost:5500",
+  "http://127.0.0.1:5500"
 ];
 
 const ALLOWED_DOMAINS = [
@@ -23,7 +23,7 @@ const ALLOWED_DOMAINS = [
 function isUrlAllowed(urlString) {
   try {
     const url = new URL(urlString);
-    return ALLOWED_DOMAINS.some(domain => url.hostname.endsWith(domain));
+    return ALLOWED_DOMAINS.includes(url.hostname); // sécurité renforcée si réutilisé ailleurs
   } catch {
     return false;
   }
@@ -33,12 +33,13 @@ function isValidEpisodeFolder(folder) {
   return /^episode\d+$/.test(folder);
 }
 
-// Middleware CORS officiel pour simplifier la gestion
+// Middleware CORS
 app.use(cors({
   origin: function (origin, callback) {
     if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
+      console.warn(`❌ Origin rejetée par CORS : ${origin}`);
       callback(new Error('Not allowed by CORS'));
     }
   }
@@ -57,7 +58,7 @@ fs.readdirSync(baseDir).forEach(folder => {
   }
 });
 
-// Routes API
+// Route d’extraction .m3u8 sécurisée par domaine
 app.get("/", async (req, res) => {
   const targetUrl = req.query.url;
   if (!targetUrl) return res.status(400).json({ error: "Paramètre ?url= manquant." });
@@ -85,10 +86,10 @@ app.get("/", async (req, res) => {
   }
 });
 
+// 🔓 Proxy ouvert (autorise tous les domaines)
 app.get("/proxy", async (req, res) => {
   const targetUrl = req.query.url;
   if (!targetUrl) return res.status(400).json({ error: "Paramètre ?url= requis." });
-  if (!isUrlAllowed(targetUrl)) return res.status(403).json({ error: "Domaine non autorisé pour proxy." });
 
   try {
     const response = await axios.get(targetUrl, {
@@ -108,6 +109,7 @@ app.get("/proxy", async (req, res) => {
   }
 });
 
+// Routes utilitaires
 app.get("/health", (req, res) => res.status(200).send("OK"));
 app.get("/status", (req, res) => res.send('✅ Serveur de miniatures et VTT en ligne'));
 
