@@ -23,7 +23,7 @@ const ALLOWED_DOMAINS = [
 function isUrlAllowed(urlString) {
   try {
     const url = new URL(urlString);
-    return ALLOWED_DOMAINS.includes(url.hostname); // sécurité renforcée si réutilisé ailleurs
+    return ALLOWED_DOMAINS.includes(url.hostname);
   } catch {
     return false;
   }
@@ -33,7 +33,7 @@ function isValidEpisodeFolder(folder) {
   return /^episode\d+$/.test(folder);
 }
 
-// Middleware CORS
+// Middleware CORS officiel pour simplifier la gestion
 app.use(cors({
   origin: function (origin, callback) {
     if (!origin || allowedOrigins.includes(origin)) {
@@ -58,11 +58,22 @@ fs.readdirSync(baseDir).forEach(folder => {
   }
 });
 
-// Route d’extraction .m3u8 sécurisée par domaine
+const cache = {};
+const CACHE_TTL = 60 * 60 * 1000; // 1 heure en millisecondes
+
+// Route d’extraction .m3u8 avec cache 1h
 app.get("/", async (req, res) => {
   const targetUrl = req.query.url;
   if (!targetUrl) return res.status(400).json({ error: "Paramètre ?url= manquant." });
   if (!isUrlAllowed(targetUrl)) return res.status(403).json({ error: "Domaine non autorisé." });
+
+  const now = Date.now();
+  const cacheEntry = cache[targetUrl];
+
+  if (cacheEntry && (now - cacheEntry.timestamp) < CACHE_TTL) {
+    // Renvoi cache si encore valide
+    return res.json({ m3u8: cacheEntry.m3u8, cached: true });
+  }
 
   try {
     const response = await axios.get(targetUrl, {
@@ -79,7 +90,10 @@ app.get("/", async (req, res) => {
       return res.status(404).json({ error: "Aucune URL .m3u8 trouvée." });
     }
 
-    res.json({ m3u8: match[1] });
+    // Mise à jour du cache
+    cache[targetUrl] = { m3u8: match[1], timestamp: now };
+
+    res.json({ m3u8: match[1], cached: false });
   } catch (err) {
     console.error("Erreur de récupération :", err.message);
     res.status(500).json({ error: "Erreur lors de la récupération de la page." });
