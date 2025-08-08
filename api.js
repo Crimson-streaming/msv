@@ -20,13 +20,24 @@ const ALLOWED_DOMAINS = [
   "127.0.0.1",
   "fremtv.lol",
   "direct.xalaflix.gg",
-  "msv-i92p.onrender.com" // ton proxy intermédiaire
+  "msv-i92p.onrender.com" // proxy intermédiaire
 ];
 
 function isUrlAllowed(urlString) {
   try {
     const url = new URL(urlString);
-    return ALLOWED_DOMAINS.includes(url.hostname);
+
+    // Domaine direct autorisé
+    if (ALLOWED_DOMAINS.includes(url.hostname)) return true;
+
+    // Cas proxy imbriqué, vérifier paramètre "url"
+    const innerUrl = url.searchParams.get("url");
+    if (innerUrl) {
+      const innerHost = new URL(innerUrl).hostname;
+      return ALLOWED_DOMAINS.includes(innerHost);
+    }
+
+    return false;
   } catch {
     return false;
   }
@@ -36,7 +47,7 @@ function isValidEpisodeFolder(folder) {
   return /^episode\d+$/.test(folder);
 }
 
-// Middleware CORS officiel pour simplifier la gestion
+// Middleware CORS global (limité aux allowedOrigins)
 app.use(cors({
   origin: function (origin, callback) {
     if (!origin || allowedOrigins.includes(origin)) {
@@ -47,6 +58,15 @@ app.use(cors({
     }
   }
 }));
+
+// Forcer CORS sur la route /proxy, ouverture totale
+app.use("/proxy", (req, res, next) => {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
+  if (req.method === "OPTIONS") return res.sendStatus(200);
+  next();
+});
 
 const baseDir = __dirname;
 console.log(`📁 Scan des dossiers dans ${baseDir}...`);
@@ -62,9 +82,9 @@ fs.readdirSync(baseDir).forEach(folder => {
 });
 
 const cache = {};
-const CACHE_TTL = 60 * 60 * 1000; // 1 heure en millisecondes
+const CACHE_TTL = 60 * 60 * 1000; // 1 heure en ms
 
-// Route d’extraction .m3u8 avec cache 1h
+// Route extraction .m3u8 avec cache 1h
 app.get("/", async (req, res) => {
   const targetUrl = req.query.url;
   if (!targetUrl) return res.status(400).json({ error: "Paramètre ?url= manquant." });
@@ -74,7 +94,6 @@ app.get("/", async (req, res) => {
   const cacheEntry = cache[targetUrl];
 
   if (cacheEntry && (now - cacheEntry.timestamp) < CACHE_TTL) {
-    // Renvoi cache si encore valide
     return res.json({ m3u8: cacheEntry.m3u8, cached: true });
   }
 
@@ -93,7 +112,6 @@ app.get("/", async (req, res) => {
       return res.status(404).json({ error: "Aucune URL .m3u8 trouvée." });
     }
 
-    // Mise à jour du cache
     cache[targetUrl] = { m3u8: match[1], timestamp: now };
 
     res.json({ m3u8: match[1], cached: false });
@@ -103,6 +121,7 @@ app.get("/", async (req, res) => {
   }
 });
 
+// Proxy ouvert avec réécriture des playlists .m3u8
 app.get("/proxy", async (req, res) => {
   const targetUrl = req.query.url;
   if (!targetUrl) return res.status(400).json({ error: "Paramètre ?url= requis." });
@@ -121,8 +140,6 @@ app.get("/proxy", async (req, res) => {
         return `${req.protocol}://${req.get("host")}/proxy?url=${encodeURIComponent(absUrl)}`;
       });
 
-      res.setHeader("Access-Control-Allow-Origin", "*");
-      res.setHeader("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
       res.type("application/vnd.apple.mpegurl").send(rewritten);
     } else {
       const response = await axios.get(targetUrl, {
@@ -131,8 +148,6 @@ app.get("/proxy", async (req, res) => {
         timeout: 10000
       });
 
-      res.setHeader("Access-Control-Allow-Origin", "*");
-      res.setHeader("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
       res.setHeader("Content-Type", response.headers["content-type"] || "application/octet-stream");
 
       response.data.pipe(res);
@@ -142,7 +157,6 @@ app.get("/proxy", async (req, res) => {
     res.status(500).json({ error: "Erreur lors de la récupération du fichier." });
   }
 });
-
 
 // Routes utilitaires
 app.get("/health", (req, res) => res.status(200).send("OK"));
