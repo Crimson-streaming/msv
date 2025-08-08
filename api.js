@@ -17,7 +17,8 @@ const ALLOWED_DOMAINS = [
   "oneupload.to",
   "vmwesa.online",
   "vidmoly.net",
-  "127.0.0.1"
+  "127.0.0.1",
+  "fremtv.lol"
 ];
 
 function isUrlAllowed(urlString) {
