@@ -101,31 +101,28 @@ app.get("/", async (req, res) => {
   }
 });
 
-// 🔓 Proxy ouvert (autorise tous les domaines et réécrit les playlists .m3u8)
 app.get("/proxy", async (req, res) => {
   const targetUrl = req.query.url;
   if (!targetUrl) return res.status(400).json({ error: "Paramètre ?url= requis." });
+  if (!isUrlAllowed(targetUrl)) return res.status(403).json({ error: "Domaine non autorisé." });
 
   try {
-    // Si c'est une playlist HLS (.m3u8) → récupérer en texte pour réécriture
     if (targetUrl.endsWith(".m3u8")) {
       const { data } = await axios.get(targetUrl, {
         headers: { "User-Agent": "Mozilla/5.0" },
+        responseType: "text",
         timeout: 10000
       });
 
-      // Réécriture : tous les liens non commentés (#) passent par notre proxy
       const rewritten = data.replace(/^(?!#)(.+)$/gm, (line) => {
         const absUrl = new URL(line.trim(), targetUrl).href;
-        return `/proxy?url=${encodeURIComponent(absUrl)}`;
+        return `${req.protocol}://${req.get("host")}/proxy?url=${encodeURIComponent(absUrl)}`;
       });
 
       res.setHeader("Access-Control-Allow-Origin", "*");
       res.setHeader("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
       res.type("application/vnd.apple.mpegurl").send(rewritten);
-    } 
-    // Sinon → c'est un segment TS/M4S ou autre → on stream direct
-    else {
+    } else {
       const response = await axios.get(targetUrl, {
         headers: { "User-Agent": "Mozilla/5.0" },
         responseType: "stream",
