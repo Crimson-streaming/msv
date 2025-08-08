@@ -101,28 +101,49 @@ app.get("/", async (req, res) => {
   }
 });
 
-// 🔓 Proxy ouvert (autorise tous les domaines)
+// 🔓 Proxy ouvert (autorise tous les domaines et réécrit les playlists .m3u8)
 app.get("/proxy", async (req, res) => {
   const targetUrl = req.query.url;
   if (!targetUrl) return res.status(400).json({ error: "Paramètre ?url= requis." });
 
   try {
-    const response = await axios.get(targetUrl, {
-      headers: { "User-Agent": "Mozilla/5.0" },
-      responseType: "stream",
-      timeout: 10000
-    });
+    // Si c'est une playlist HLS (.m3u8) → récupérer en texte pour réécriture
+    if (targetUrl.endsWith(".m3u8")) {
+      const { data } = await axios.get(targetUrl, {
+        headers: { "User-Agent": "Mozilla/5.0" },
+        timeout: 10000
+      });
 
-    res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
-    res.setHeader("Content-Type", response.headers["content-type"] || "application/octet-stream");
+      // Réécriture : tous les liens non commentés (#) passent par notre proxy
+      const rewritten = data.replace(/^(?!#)(.+)$/gm, (line) => {
+        const absUrl = new URL(line.trim(), targetUrl).href;
+        return `/proxy?url=${encodeURIComponent(absUrl)}`;
+      });
 
-    response.data.pipe(res);
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      res.setHeader("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
+      res.type("application/vnd.apple.mpegurl").send(rewritten);
+    } 
+    // Sinon → c'est un segment TS/M4S ou autre → on stream direct
+    else {
+      const response = await axios.get(targetUrl, {
+        headers: { "User-Agent": "Mozilla/5.0" },
+        responseType: "stream",
+        timeout: 10000
+      });
+
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      res.setHeader("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
+      res.setHeader("Content-Type", response.headers["content-type"] || "application/octet-stream");
+
+      response.data.pipe(res);
+    }
   } catch (err) {
     console.error("Erreur proxy:", err.message);
     res.status(500).json({ error: "Erreur lors de la récupération du fichier." });
   }
 });
+
 
 // Routes utilitaires
 app.get("/health", (req, res) => res.status(200).send("OK"));
