@@ -18,7 +18,9 @@ const ALLOWED_DOMAINS = [
   "vmwesa.online",
   "vidmoly.net",
   "127.0.0.1",
-  "fremtv.lol"
+  "fremtv.lol",
+  "direct.xalaflix.gg",
+  "msv-i92p.onrender.com" // ton proxy intermédiaire
 ];
 
 function isUrlAllowed(urlString) {
