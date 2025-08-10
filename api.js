@@ -17,27 +17,13 @@ const ALLOWED_DOMAINS = [
   "oneupload.to",
   "vmwesa.online",
   "vidmoly.net",
-  "127.0.0.1",
-  "fremtv.lol",
-  "direct.xalaflix.gg",
-  "msv-i92p.onrender.com" // proxy intermédiaire
+  "127.0.0.1"
 ];
 
 function isUrlAllowed(urlString) {
   try {
     const url = new URL(urlString);
-
-    // Domaine direct autorisé
-    if (ALLOWED_DOMAINS.includes(url.hostname)) return true;
-
-    // Cas proxy imbriqué, vérifier paramètre "url"
-    const innerUrl = url.searchParams.get("url");
-    if (innerUrl) {
-      const innerHost = new URL(innerUrl).hostname;
-      return ALLOWED_DOMAINS.includes(innerHost);
-    }
-
-    return false;
+    return ALLOWED_DOMAINS.includes(url.hostname);
   } catch {
     return false;
   }
@@ -47,7 +33,7 @@ function isValidEpisodeFolder(folder) {
   return /^episode\d+$/.test(folder);
 }
 
-// Middleware CORS global (limité aux allowedOrigins)
+// Middleware CORS officiel pour simplifier la gestion
 app.use(cors({
   origin: function (origin, callback) {
     if (!origin || allowedOrigins.includes(origin)) {
@@ -58,15 +44,6 @@ app.use(cors({
     }
   }
 }));
-
-// Forcer CORS sur la route /proxy, ouverture totale
-app.use("/proxy", (req, res, next) => {
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
-  if (req.method === "OPTIONS") return res.sendStatus(200);
-  next();
-});
 
 const baseDir = __dirname;
 console.log(`📁 Scan des dossiers dans ${baseDir}...`);
@@ -82,9 +59,9 @@ fs.readdirSync(baseDir).forEach(folder => {
 });
 
 const cache = {};
-const CACHE_TTL = 60 * 60 * 1000; // 1 heure en ms
+const CACHE_TTL = 60 * 60 * 1000; // 1 heure en millisecondes
 
-// Route extraction .m3u8 avec cache 1h
+// Route d’extraction .m3u8 avec cache 1h
 app.get("/", async (req, res) => {
   const targetUrl = req.query.url;
   if (!targetUrl) return res.status(400).json({ error: "Paramètre ?url= manquant." });
@@ -94,6 +71,7 @@ app.get("/", async (req, res) => {
   const cacheEntry = cache[targetUrl];
 
   if (cacheEntry && (now - cacheEntry.timestamp) < CACHE_TTL) {
+    // Renvoi cache si encore valide
     return res.json({ m3u8: cacheEntry.m3u8, cached: true });
   }
 
@@ -112,6 +90,7 @@ app.get("/", async (req, res) => {
       return res.status(404).json({ error: "Aucune URL .m3u8 trouvée." });
     }
 
+    // Mise à jour du cache
     cache[targetUrl] = { m3u8: match[1], timestamp: now };
 
     res.json({ m3u8: match[1], cached: false });
@@ -121,37 +100,23 @@ app.get("/", async (req, res) => {
   }
 });
 
-// Proxy ouvert avec réécriture des playlists .m3u8
+// 🔓 Proxy ouvert (autorise tous les domaines)
 app.get("/proxy", async (req, res) => {
   const targetUrl = req.query.url;
   if (!targetUrl) return res.status(400).json({ error: "Paramètre ?url= requis." });
-  if (!isUrlAllowed(targetUrl)) return res.status(403).json({ error: "Domaine non autorisé." });
 
   try {
-    if (targetUrl.endsWith(".m3u8")) {
-      const { data } = await axios.get(targetUrl, {
-        headers: { "User-Agent": "Mozilla/5.0" },
-        responseType: "text",
-        timeout: 10000
-      });
+    const response = await axios.get(targetUrl, {
+      headers: { "User-Agent": "Mozilla/5.0" },
+      responseType: "stream",
+      timeout: 10000
+    });
 
-      const rewritten = data.replace(/^(?!#)(.+)$/gm, (line) => {
-        const absUrl = new URL(line.trim(), targetUrl).href;
-        return `${req.protocol}://${req.get("host")}/proxy?url=${encodeURIComponent(absUrl)}`;
-      });
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
+    res.setHeader("Content-Type", response.headers["content-type"] || "application/octet-stream");
 
-      res.type("application/vnd.apple.mpegurl").send(rewritten);
-    } else {
-      const response = await axios.get(targetUrl, {
-        headers: { "User-Agent": "Mozilla/5.0" },
-        responseType: "stream",
-        timeout: 10000
-      });
-
-      res.setHeader("Content-Type", response.headers["content-type"] || "application/octet-stream");
-
-      response.data.pipe(res);
-    }
+    response.data.pipe(res);
   } catch (err) {
     console.error("Erreur proxy:", err.message);
     res.status(500).json({ error: "Erreur lors de la récupération du fichier." });
